@@ -1,0 +1,46 @@
+#GetGlycanCorr() is a function for calculating the Spearman's correlation coefficients of the expression level of highly expressed genes and a given glycan.
+#Four parameters are needed. Object is the Seurat object under operation. Glycan is the name of the column in the meta.data sheet. Genes is the number of how many genes that will be considered and calculated. Digit is the significant figures of calculated coefficients.
+#The output gives a data frame.
+GetGlycanCorr <- function(Object, Glycan, Genes=1000,Digit=2)
+{
+    X=as.data.frame(Object@assays$RNA@data)
+    n=nrow(Object@meta.data)
+    colnames(X)=seq(1:n)
+    X.Sia=as.data.frame(t(as.data.frame(Object@meta.data[,Glycan])))
+    rownames(X.Sia)=Glycan
+    colnames(X.Sia)=seq(1:n)
+    X=rbind(X,X.Sia)
+    X=X[which(rowSums(X) > quantile(as.data.frame(rowSums(X))[,1],1-(Genes+1)/nrow(X))),]
+    X=t(X)
+    X=round(cor(X,method="spearman"), Digit)
+    X.1=as.data.frame(X[,Glycan])
+    colnames(X.1)="Corr"
+    X.1[,"gene"]=rownames(X.1)
+    X.1=X.1[order(as.numeric(X.1$Corr),decreasing = T),]
+    X.1=X.1[-1,]
+    rownames(X.1)=seq(1:nrow(X.1))
+    rm(list=c("X","n","X.Sia"))
+    gc()
+    return(X.1)
+}
+
+#Glycan_kNN_correlation() is a function to denoise the expression level of a certain glycan.
+#Four parameters are needed. Object is the Seurat object under operation. Glycan is the name of the column in the meta.data sheet. k is the number of neighboring cells considered to correct the expression level. t is a boolean value to indicate whether outliers are filtered.
+#The output gives a vector that should be added as an additional column in the meta.data.
+Glycan_kNN_correlation=function(Object,Glycan,k=10,t=0){
+  cell_vectors = TILs.rna@reductions$pca@cell.embeddings %>% as.data.frame()
+  cell_distance = cell_vectors %>% dist() %>% as.matrix() %>% as.data.frame()
+  cell_value = TILs.rna@meta.data[Glycan]
+  cell_value[,"cell_id"]=rownames(cell_value)
+  
+  for(i in 1:nrow(cell_vectors)){
+    col_temp=cell_distance[i]
+    col_temp[,"cell_id"]=rownames(col_temp)
+    col_temp=col_temp[order(col_temp[,1]),]
+    cell_select=col_temp[1:k,]
+    cell_select=merge(cell_select,cell_value,by="cell_id")
+    cell_value[i,"value_new"]=mean(cell_select$Sia,trim=t)
+    print(i)
+  }
+  return(cell_value$value_new)
+}
